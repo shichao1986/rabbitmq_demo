@@ -1,0 +1,14 @@
+由于安装rabbitmq需要先安装erlang开发环境
+erlang开发环境在安装时以及后续的rabbitmq-server
+在安装时存在诸多配置上的问题，此处rabbitmq的安装
+采用docker的方式进行，屏蔽主机配置不通给安装带来
+的各种坑。步骤如下：
+1、登录个人服务器，需要安装有docker（docker安装方法略）
+2、docker pull rabbitmq:3.7-management
+3、使用docker-compose配置rabbitmq
+4、docker-compose up -d   启动rabbitmq
+5、docker-compose down    关闭rabbitmq
+
+
+rabbitmq参考资料：
+https://hub.docker.com/_/rabbitmq?tab=description

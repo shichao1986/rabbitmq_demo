@@ -1,0 +1,14 @@
+rabbitmq:
+  container_name: rabbitmq-server
+  image: rabbitmq:3.7-management
+  ports:
+    - "5672:5672"
+    - "15672:15672"
+  hostname: rabbitmq
+  environment:
+    - RABBITMQ_DEFAULT_USER=useruser
+    - RABBITMQ_DEFAULT_PASS=password
+    - RABBITMQ_DEFAULT_VHOST=test-vhost
+  volumes:
+    - /srv/docker/data/rabbitmq:/var/lib/rabbitmq
+  restart: always
