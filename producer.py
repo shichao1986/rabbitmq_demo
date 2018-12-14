@@ -8,6 +8,9 @@ from config import rabbit_config
 
 test_exchange = 'exchange_direct'
 
+def ack_consumer_callbask(channel, method, properties, body):
+    print('ack_callbask:{}'.format((channel, method, properties, body)))
+
 # 初始化rabbitmq连接
 def init_rabbitmq():
     credentials = pika.PlainCredentials(rabbit_config['user'], rabbit_config['password'])
@@ -18,6 +21,10 @@ def init_rabbitmq():
         init_rabbitmq.channel = init_rabbitmq.connection.channel()
         # passive = True 验证exchange是否存在，不存在抛出异常
         init_rabbitmq.channel.exchange_declare(exchange=test_exchange, passive=True)
+        init_rabbitmq.channel.basic_consume(consumer_callback=ack_consumer_callbask,
+                                            queue='exchange_direct_q3',
+                                            consumer_tag='0',arguments=dict(a=123), no_ack=True)
+        # init_rabbitmq.channel.start_consuming()
     except Exception as e:
         print(e)
         return -1
@@ -40,13 +47,14 @@ def reconnect_rabbitmq():
 def send_rabbitmq_message(message, exchange, routing_key, properties=None):
     channel = init_rabbitmq.channel
     try:
+        # mandatory=False（找不到queue时直接丢弃，反之报错）, immediate=False（无consumer时排队，反之报错）
         channel.basic_publish(exchange=exchange, routing_key=routing_key, body=message, properties=properties)
     except Exception as e:
         print(e)
         print('try to reconnect rabbit...')
         if init_rabbitmq() == 0:
             print('reconnected!try to resend the message...')
-            channel.basic_publish(exchange=exchange, routing_key=routing_key, body=message)
+            channel.basic_publish(exchange=exchange, routing_key=routing_key, body=message, properties=properties)
             return 0
         else:
             print('reconnect failed!')
@@ -61,7 +69,7 @@ def message_producer1():
     # 两种情况下message都不会保存,仅当properties的delivery_mode=2时消息才会持久化
     # 如果消息发送时设定为持久化，而queue 或 exchange 未设置为持久化，则rabbitmq重启
     # 后，消息不会持久化保存
-    prop = pika.spec.BasicProperties(delivery_mode=2)
+    prop = pika.spec.BasicProperties(delivery_mode=2, reply_to='exchange_direct_q3')
     send_rabbitmq_message('hello world!', test_exchange, 'rout_direct', properties=prop)
 
 # 异步发送单条消息，发送完成后关闭连接
@@ -79,6 +87,7 @@ def message_producer1():
 def main():
     init_rabbitmq()
     message_producer1()
+    init_rabbitmq.channel.start_consuming()
     close_rabbitmq()
 
 if __name__ == '__main__':
