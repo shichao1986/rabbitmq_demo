@@ -5,6 +5,7 @@
 import sys
 import pika
 from config import rabbit_config
+from consumer_thread import ConsumerThread
 
 test_exchange = 'exchange_direct'
 
@@ -38,23 +39,33 @@ def close_rabbitmq():
 
 # message_producer1() 的consumer
 def message_consumer1(channel, method, properties, body):
-    import pdb;pdb.set_trace()
+    # import pdb;pdb.set_trace()
     print('message_consumer1:')
     print('channel={}'.format(channel))
     print('method={}'.format(method))
     print('properties={}'.format(properties))
     print('body={}'.format(body))
 
+    if properties.reply_to:
+        channel.basic_publish(exchange='', routing_key=properties.reply_to,
+                              properties=pika.BasicProperties(correlation_id=properties.correlation_id), body='222')
+
     channel.basic_ack(delivery_tag=method.delivery_tag)
 
 
 def main():
-    init_rabbitmq()
+    # init_rabbitmq()
+    c1 = ConsumerThread(queue='exchange_direct_q1', callback=message_consumer1, consumer_tag='1',arguments=dict(a=123))
+    c1.start()
+
+    # exchange_direct_q2 这是一个非持久化的queue，可以验证，当rabbitmq重启后，由于队列消失，之前的consumer会
+    c2 = ConsumerThread(queue='exchange_direct_q2', callback=message_consumer1, consumer_tag='2', arguments=dict(a=123))
+    c2.start()
 
     print('init finished!')
-    # while True:
-    #     import time
-    #     time.sleep(1)
+    while True:
+        import time
+        time.sleep(1)
 
     # close_rabbitmq()
     return 0
