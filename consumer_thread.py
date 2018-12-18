@@ -9,47 +9,172 @@ import threading
 from config import rabbit_config
 
 #consumer的 connection全局唯一，每一个线程有自己的channel
-conn_lock = threading.Lock()
+cond = threading.Condition()
+channel_lock = threading.Lock()
 
-# kwargs 与 channel.basic_consume 中的kwargs定义一致
-def consumer_job(queue, callback, **kwargs):
-    global conn_lock
-    credentials = pika.PlainCredentials(rabbit_config['user'], rabbit_config['password'])
-    parameters = pika.ConnectionParameters(host=rabbit_config['host'], port=rabbit_config['port'],
-                                           virtual_host=rabbit_config['vhost'], credentials=credentials)
-    if conn_lock.acquire():
-        if 'conn' not in dir(consumer_job):
-            consumer_job.conn = None
-            consumer_job.reconn = False
-        conn_lock.release()
-    channel = None
-    while True:
-        try:
-            if conn_lock.acquire():
-                if consumer_job.conn is None or consumer_job.conn.is_open is not True:
-                    consumer_job.conn = pika.BlockingConnection(parameters)
-                    print('{}:new connection {}'.format(threading.get_ident(),consumer_job.conn))
-                conn_lock.release()
-            if channel is None or channel.is_open is not True:
-                channel = consumer_job.conn.channel()
-                channel.basic_consume(consumer_callback=callback, queue=queue, **kwargs)
+# 线程安全装饰器，多线程调用时防止并发执行
+def sychronized(func):
+    func.__lock__ = threading.Lock()
+    def inner(*args, **kwargs):
+        with func.__lock__:
+            return func(*args, **kwargs)
+    return inner
 
-            # print('set consumer {},{}'.format(queue, kwargs))
-            while True:
-                # channel.start_consuming()
-                consumer_job.conn.process_data_events(time_limit=None)
-        except Exception as e:
-            print(e)
-            print('{}:try to reconnect to {}:{}'.format(threading.get_ident(), rabbit_config['host'], rabbit_config['port']))
+def once(func):
+    func.__lock__ = threading.Lock()
+    def inner(*args, **kwargs):
+        with func.__lock__:
+            if not hasattr(func, '__once__'):#'__once__' not in func:
+                func.__once__ = True
+                return func(*args, **kwargs)
+            else:
+                # 不执行，直接返回
+                return
+    return inner
 
-        # 连接失败，或者断开连接，3秒后重新连接
-        time.sleep(3)
+# conn_lock = threading.Lock()
+# # kwargs 与 channel.basic_consume 中的kwargs定义一致
+# def consumer_job(queue, callback, **kwargs):
+#     global conn_lock
+#     credentials = pika.PlainCredentials(rabbit_config['user'], rabbit_config['password'])
+#     parameters = pika.ConnectionParameters(host=rabbit_config['host'], port=rabbit_config['port'],
+#                                            virtual_host=rabbit_config['vhost'], credentials=credentials)
+#     if conn_lock.acquire():
+#         if 'conn' not in dir(consumer_job):
+#             consumer_job.conn = None
+#             consumer_job.reconn = False
+#         conn_lock.release()
+#     channel = None
+#     while True:
+#         try:
+#             if conn_lock.acquire():
+#                 if consumer_job.conn is None or consumer_job.conn.is_open is not True:
+#                     consumer_job.conn = pika.BlockingConnection(parameters)
+#                     print('{}:new connection {}'.format(threading.get_ident(),consumer_job.conn))
+#                 conn_lock.release()
+#             if channel is None or channel.is_open is not True:
+#                 channel = consumer_job.conn.channel()
+#                 channel.basic_consume(consumer_callback=callback, queue=queue, **kwargs)
+#
+#             # print('set consumer {},{}'.format(queue, kwargs))
+#             while True:
+#                 channel.start_consuming()
+#                 # consumer_job.conn.process_data_events(time_limit=None)
+#         except Exception as e:
+#             print(e)
+#             print('{}:try to reconnect to {}:{}'.format(threading.get_ident(), rabbit_config['host'], rabbit_config['port']))
+#
+#         # 连接失败，或者断开连接，3秒后重新连接
+#         time.sleep(3)
 
-
+# 一个线程一个connection 用于管理其下的所有channel
 class ConsumerThread(threading.Thread):
-    def __init__(self, *args, **kwargs):
-        super(ConsumerThread, self).__init__(target=consumer_job, args=args, kwargs=kwargs)
-        # self.queue = queue
-        # self.kwargs = kwargs
+    def __init__(self, rabbit_config):
+        super(ConsumerThread, self).__init__()
+        self.rabbit_host = rabbit_config['host']
+        self.rabbit_port = rabbit_config['port']
+        self.rabbit_user = rabbit_config['user']
+        self.rabbit_pass = rabbit_config['password']
+        self.rabbit_vhost = rabbit_config['vhost']
+        self.cond = None
+        self.conn = None
+        self.channels_lock = threading.Lock()
+        # 本例程不负责rabbitmq的配置，channels仅定义channel下的queue和callback的对应关系
+        # {'channel':{'pika_channel':channel,'queues':[{'queue':'queue_name1', 'callback':call_back1, 'kwargs':kwargs}]}}
+        self.channels = dict()
         self.setDaemon(True)
+
+    def reconnect(self):
+        credentials = pika.PlainCredentials(self.rabbit_user, self.rabbit_pass)
+        parameters = pika.ConnectionParameters(host=self.rabbit_host, port=self.rabbit_port,
+                                               virtual_host=self.rabbit_vhost, credentials=credentials)
+        self.conn = pika.BlockingConnection(parameters)
+
+        # with self.channels_lock:
+        config_channels = self.channels
+        self.channels = dict()
+        # import pdb;pdb.set_trace()
+        for channelname, configuration in config_channels.items():
+            if self.register_channel(channelname):
+                for cfg in configuration['queues']:
+                    self.consumer_set(cfg['queue'], cfg['callback'], channel_name=channelname, **cfg['kwargs'])
+                    print('rebuild conn succeed:{}'.format(cfg))
+
+
+
+    def run(self):
+        while True:
+            try:
+                self.reconnect()
+                print('{}:new connection {}'.format(threading.get_ident(), self.conn))
+                self.clear_runflag()
+                while True:
+                    self.conn.process_data_events(time_limit=None)
+            except Exception as e:
+                print(e)
+                print('{}:try to reconnect to {}:{}'.format(threading.get_ident(), self.rabbit_host, self.rabbit_port))
+                # 重连间隔设定为3秒
+                time.sleep(3)
+
+    def register_channel(self, channel_name='default_channel'):
+        with self.channels_lock:
+            if channel_name not in self.channels:
+                try:
+                    d = {}
+                    d['pika_channel'] = self.conn.channel()
+                    d['queues'] = []
+                    self.channels[channel_name] = d
+                except Exception as e:
+                    print(e)
+                    return False
+            return True
+
+    def consumer_set(self, queue, callback, channel_name='default_channel', **kwargs):
+        with self.channels_lock:
+            if channel_name in self.channels:
+                try:
+                    self.channels[channel_name]['pika_channel'].basic_consume(consumer_callback=callback, queue=queue, **kwargs)
+                    self.channels[channel_name]['queues'].append(dict(queue=queue, callback=callback, kwargs=kwargs))
+                except Exception as e:
+                    print('{}:{}'.format('consumer_set', e))
+                    del self.channels[channel_name]
+                    return False
+                return True
+
+            return False
+
+    def set_runflag(self, cond):
+        self.cond = cond
+
+    def clear_runflag(self):
+        if self.cond:
+            with self.cond:
+                self.cond.notify()
+                self.cond = None
+
+# 单例模式对ConsumerThread类进行封装
+class ConsumerDaemon(object):
+    @sychronized
+    def __new__(cls, *args, **kwargs):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(ConsumerDaemon, cls).__new__(cls)
+        return cls.instance
+
+    @once
+    def __init__(self):
+        global cond
+        print('daemon init!id={}'.format(id(self)))
+        self.consumer_thread = ConsumerThread(rabbit_config)
+        self.consumer_thread.set_runflag(cond)
+        self.consumer_thread.start()
+        # 主线程等待子线程建立连接成功
+        with cond:
+            cond.wait()
+
+    def register(self, channel_name='default_channel'):
+        return self.consumer_thread.register_channel(channel_name=channel_name)
+
+    def set(self, queue, callback, channel_name='default_channel', **kwargs):
+        return self.consumer_thread.consumer_set(queue=queue, callback=callback, channel_name=channel_name, **kwargs)
+
 

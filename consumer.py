@@ -3,9 +3,10 @@
 # 本模块实现多种情景下的rabbitmq consumer
 
 import sys
+import time
 import pika
 from config import rabbit_config
-from consumer_thread import ConsumerThread
+from consumer_thread import ConsumerDaemon
 
 test_exchange = 'exchange_direct'
 
@@ -40,11 +41,11 @@ def close_rabbitmq():
 # message_producer1() 的consumer
 def message_consumer1(channel, method, properties, body):
     # import pdb;pdb.set_trace()
-    print('message_consumer1:')
-    print('channel={}'.format(channel))
-    print('method={}'.format(method))
-    print('properties={}'.format(properties))
-    print('body={}'.format(body))
+    # print('message_consumer1:')
+    # print('channel={}'.format(channel))
+    # print('method={}'.format(method))
+    # print('properties={}'.format(properties))
+    # print('body={}'.format(body))
 
     if properties.reply_to:
         channel.basic_publish(exchange='', routing_key=properties.reply_to,
@@ -55,20 +56,27 @@ def message_consumer1(channel, method, properties, body):
 
 def main():
     # init_rabbitmq()
-    c1 = ConsumerThread(queue='exchange_direct_q1', callback=message_consumer1, consumer_tag='1',arguments=dict(a=123))
-    c1.start()
+    # c1 = ConsumerThread(queue='exchange_direct_q1', callback=message_consumer1, consumer_tag='1',arguments=dict(a=123))
+    # c1.start()
+    #
+    # # exchange_direct_q2 这是一个非持久化的queue，可以验证，当rabbitmq重启后，由于队列消失，之前的consumer会
+    # c2 = ConsumerThread(queue='exchange_direct_q2', callback=message_consumer1, consumer_tag='2', arguments=dict(a=123))
+    # c2.start()
+    c = ConsumerDaemon()
+    c.register(channel_name='ch1')
+    c.set(queue='exchange_direct_q1', callback=message_consumer1, channel_name='ch1', consumer_tag='2', arguments=dict(a=123))
 
-    # exchange_direct_q2 这是一个非持久化的queue，可以验证，当rabbitmq重启后，由于队列消失，之前的consumer会
-    c2 = ConsumerThread(queue='exchange_direct_q2', callback=message_consumer1, consumer_tag='2', arguments=dict(a=123))
-    c2.start()
+    print('init ch2')
+    c = ConsumerDaemon()
+    c.register(channel_name='ch2')
+    c.set(queue='exchange_direct_q2', callback=message_consumer1, channel_name='ch2', consumer_tag='333', arguments=dict(a=123))
 
     print('init finished!')
     while True:
-        import time
         time.sleep(1)
 
     # close_rabbitmq()
     return 0
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

@@ -11,7 +11,8 @@ from consumer_thread import ConsumerThread
 test_exchange = 'exchange_direct'
 
 def ack_consumer_callback(channel, method, properties, body):
-    print('ack_callbask:{}'.format((channel, method, properties, body)))
+    # print('ack_callbask:{}'.format((channel, method, properties, body)))
+    pass
 
 # 初始化rabbitmq连接
 def init_rabbitmq():
@@ -108,9 +109,9 @@ def main():
     # print('close_rabbitmq ok!')
     while True:
         message_producer1()
-        print('message_producer1 ok!')
+        # print('message_producer1 ok!')
         init_rabbitmq.connection.process_data_events(time_limit=None)
-        time.sleep(1)
+        # time.sleep(1)
 
 
 if __name__ == '__main__':
