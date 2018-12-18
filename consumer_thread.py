@@ -9,7 +9,8 @@ import threading
 from config import rabbit_config
 
 #consumer的 connection全局唯一，每一个线程有自己的channel
-cond = threading.Condition()
+consumer_cond = threading.Condition()
+producer_cond = threading.Condition()
 channel_lock = threading.Lock()
 
 # 线程安全装饰器，多线程调用时防止并发执行
@@ -80,7 +81,25 @@ class ConsumerThread(threading.Thread):
         self.conn = None
         self.channels_lock = threading.Lock()
         # 本例程不负责rabbitmq的配置，channels仅定义channel下的queue和callback的对应关系
-        # {'channel':{'pika_channel':channel,'queues':[{'queue':'queue_name1', 'callback':call_back1, 'kwargs':kwargs}]}}
+        '''
+        self.channels =
+        {
+            'channel': {
+                'pika_channel': channel,
+                'queues': [
+                    {
+                        'queue': 'queue_name1',
+                        'callback': call_back1,
+                        'kwargs': kwargs
+                    }
+                ],
+                'qos': {
+                    'prefetch_cnt': x,
+                    'prefetch_size': x
+                }
+            }
+        }
+        '''
         self.channels = dict()
         self.setDaemon(True)
 
@@ -93,14 +112,11 @@ class ConsumerThread(threading.Thread):
         # with self.channels_lock:
         config_channels = self.channels
         self.channels = dict()
-        # import pdb;pdb.set_trace()
         for channelname, configuration in config_channels.items():
             if self.register_channel(channelname):
                 for cfg in configuration['queues']:
                     self.consumer_set(cfg['queue'], cfg['callback'], channel_name=channelname, **cfg['kwargs'])
                     print('rebuild conn succeed:{}'.format(cfg))
-
-
 
     def run(self):
         while True:
@@ -116,6 +132,9 @@ class ConsumerThread(threading.Thread):
                 # 重连间隔设定为3秒
                 time.sleep(3)
 
+    # 我一直纠结要不要提供默认channel，虽然这使得设计看上去完整，但是却带来了一个额外的风险
+    # 当共享channel发生异常时，所有基于这个channel的订阅者将不复存在
+    # 一切使用默认channel的业务需要自己完成channel的恢复，守护进程仅在发生重连时对正常的channel进行恢复
     def register_channel(self, channel_name='default_channel'):
         with self.channels_lock:
             if channel_name not in self.channels:
@@ -128,6 +147,10 @@ class ConsumerThread(threading.Thread):
                     print(e)
                     return False
             return True
+
+    # 参数参考pika.channel.basic_qos(),未实现
+    def channel_qos(self, channel_name='default_channel', **kwargs):
+        pass
 
     def consumer_set(self, queue, callback, channel_name='default_channel', **kwargs):
         with self.channels_lock:
@@ -143,9 +166,14 @@ class ConsumerThread(threading.Thread):
 
             return False
 
+    def publish(self, exchange, routing_key, body, channel_name='default_channel', properties=None):
+        pass
+
+    # 用于同步初始化，保证守护进程启动后再设置consumer或发送消息
     def set_runflag(self, cond):
         self.cond = cond
 
+    # 通知主线程connection就绪并清除同步初始化标志，防止在断线重连时调用
     def clear_runflag(self):
         if self.cond:
             with self.cond:
@@ -162,14 +190,14 @@ class ConsumerDaemon(object):
 
     @once
     def __init__(self):
-        global cond
-        print('daemon init!id={}'.format(id(self)))
+        global consumer_cond
+        print('ConsumerDaemon init!id={}'.format(id(self)))
         self.consumer_thread = ConsumerThread(rabbit_config)
-        self.consumer_thread.set_runflag(cond)
+        self.consumer_thread.set_runflag(consumer_cond)
         self.consumer_thread.start()
         # 主线程等待子线程建立连接成功
-        with cond:
-            cond.wait()
+        with consumer_cond:
+            consumer_cond.wait()
 
     def register(self, channel_name='default_channel'):
         return self.consumer_thread.register_channel(channel_name=channel_name)
