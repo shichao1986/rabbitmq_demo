@@ -4,6 +4,7 @@
 
 import time
 import pika
+import uuid
 import threading
 
 from config import rabbit_config
@@ -166,8 +167,24 @@ class ConsumerThread(threading.Thread):
 
             return False
 
-    def publish(self, exchange, routing_key, body, channel_name='default_channel', properties=None):
-        pass
+    def publish(self, exchange, routing_key, body, channel_name='default_channel', callback=None, corr_id=None):
+        channel = self.channels[channel_name]['pika_channel']
+        if channel is not None and channel.is_open:
+            try:
+                if callback:
+                    if corr_id is None:
+                        print('corr_id is invalid!')
+                        return False
+                    prop = pika.BasicProperties(delivery_mode=2, reply_to='amq.rabbitmq.reply-to',
+                                                correlation_id=corr_id)
+                    channel.basic_publish(exchange=exchange, routing_key=routing_key, properties=prop, body=body)
+                else:
+                    channel.basic_publish(exchange=exchange, routing_key=routing_key, body=body)
+            except Exception as e:
+                print (e)
+                return False
+            return True
+        return False
 
     # 用于同步初始化，保证守护进程启动后再设置consumer或发送消息
     def set_runflag(self, cond):
@@ -205,4 +222,40 @@ class ConsumerDaemon(object):
     def set(self, queue, callback, channel_name='default_channel', **kwargs):
         return self.consumer_thread.consumer_set(queue=queue, callback=callback, channel_name=channel_name, **kwargs)
 
+class ProducerDaemon(object):
+    @sychronized
+    def __new__(cls, *args, **kwargs):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(ProducerDaemon, cls).__new__(cls)
+        return cls.instance
 
+    @once
+    def __init__(self):
+        global producer_cond
+        self.producer_thread = ConsumerThread(rabbit_config)
+        self.producer_thread.set_runflag(producer_cond)
+        self.producer_thread.start()
+        self.response_callbacks = {}
+        with producer_cond:
+            producer_cond.wait()
+        self.producer_thread.register_channel()
+        self.producer_thread.consumer_set(queue='amq.rabbitmq.reply-to', callback=self.reply_response, no_ack=True)
+
+    def reply_response(self, channel, method, properties, body):
+        corr_id = properties.correlation_id
+        # corr_id 为各个线程注册的唯一id，ProducerDaemon为不同的corr_id保存各自的函数
+        if corr_id in self.response_callbacks:
+            return self.response_callbacks[corr_id](channel, method, properties, body)
+        else:
+            print('response func missed!')
+        return
+
+    def publish(self, exchange, message, routing_key, callback=None, corr_id=None):
+        if callback and corr_id:
+            self.response_callbacks[corr_id] = callback
+        elif callback:
+            corr_id = uuid.uuid4()
+            self.response_callbacks[corr_id] = callback
+
+        return self.producer_thread.publish(exchange=exchange, routing_key=routing_key, body=message, callback=callback,
+                                     corr_id=corr_id)
