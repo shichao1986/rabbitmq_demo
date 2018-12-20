@@ -1,14 +1,14 @@
-ÓÉÓÚ°²×°rabbitmqĞèÒªÏÈ°²×°erlang¿ª·¢»·¾³
-erlang¿ª·¢»·¾³ÔÚ°²×°Ê±ÒÔ¼°ºóĞøµÄrabbitmq-server
-ÔÚ°²×°Ê±´æÔÚÖî¶àÅäÖÃÉÏµÄÎÊÌâ£¬´Ë´¦rabbitmqµÄ°²×°
-²ÉÓÃdockerµÄ·½Ê½½øĞĞ£¬ÆÁ±ÎÖ÷»úÅäÖÃ²»Í¨¸ø°²×°´øÀ´
-µÄ¸÷ÖÖ¿Ó¡£²½ÖèÈçÏÂ£º
-1¡¢µÇÂ¼¸öÈË·şÎñÆ÷£¬ĞèÒª°²×°ÓĞdocker£¨docker°²×°·½·¨ÂÔ£©
-2¡¢docker pull rabbitmq:3.7-management
-3¡¢Ê¹ÓÃdocker-composeÅäÖÃrabbitmq
-4¡¢docker-compose up -d   Æô¶¯rabbitmq
-5¡¢docker-compose down    ¹Ø±Õrabbitmq
+ç”±äºå®‰è£…rabbitmqéœ€è¦å…ˆå®‰è£…erlangå¼€å‘ç¯å¢ƒ
+erlangå¼€å‘ç¯å¢ƒåœ¨å®‰è£…æ—¶ä»¥åŠåç»­çš„rabbitmq-server
+åœ¨å®‰è£…æ—¶å­˜åœ¨è¯¸å¤šé…ç½®ä¸Šçš„é—®é¢˜ï¼Œæ­¤å¤„rabbitmqçš„å®‰è£…
+é‡‡ç”¨dockerçš„æ–¹å¼è¿›è¡Œï¼Œå±è”½ä¸»æœºé…ç½®ä¸é€šç»™å®‰è£…å¸¦æ¥
+çš„å„ç§å‘ã€‚æ­¥éª¤å¦‚ä¸‹ï¼š
+1ã€ç™»å½•ä¸ªäººæœåŠ¡å™¨ï¼Œéœ€è¦å®‰è£…æœ‰dockerï¼ˆdockerå®‰è£…æ–¹æ³•ç•¥ï¼‰
+2ã€docker pull rabbitmq:3.7-management
+3ã€ä½¿ç”¨docker-composeé…ç½®rabbitmq
+4ã€docker-compose up -d   å¯åŠ¨rabbitmq
+5ã€docker-compose down    å…³é—­rabbitmq
 
 
-rabbitmq²Î¿¼×ÊÁÏ£º
+rabbitmqå‚è€ƒèµ„æ–™ï¼š
 https://hub.docker.com/_/rabbitmq?tab=description
