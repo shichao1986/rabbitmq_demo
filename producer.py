@@ -30,7 +30,7 @@ def ack_consumer_callback(channel, method, properties, body):
 def main():
     p = ProducerDaemon()
     while True:
-        p.publish(test_exchange, 'hello world!', 'rout_direct', callback=ack_consumer_callback, corr_id='p1')
+        # p.publish(test_exchange, 'hello world!', 'rout_direct', callback=ack_consumer_callback, corr_id='p1')
         p.publish(test_exchange, 'hello world!2', 'rout_direct')
         time.sleep(2)
 

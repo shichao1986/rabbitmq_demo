@@ -21,7 +21,7 @@ exchange_config = [
     {
         'exchange':'exchange_direct',
         'durable':True,
-        'exchange_type':'direct',
+        'exchange_type':'direct',   # 使用routingkey将消息发送给指定的queue
         'queues':[
             {
                 'queue':'exchange_direct_q1',
@@ -43,7 +43,8 @@ exchange_config = [
     },{
         'exchange':'exchange_topic',
         'durable':True,
-        'exchange_type':'topic',
+        'exchange_type':'topic',    #topic 使用模糊匹配的方式， 例如符号“#”匹配一个或多个词，符号“*”匹配不多不少
+                                        # 一个词。因此“log.#”能够匹配到“log.info.oa”，但是“log.*” 只会匹配到“log.error”
         'queues':[
             {
                 'queue':'exchange_topic_q1',
@@ -65,7 +66,7 @@ exchange_config = [
     },{
         'exchange':'exchange_fanout',
         'durable':True,
-        'exchange_type':'fanout',
+        'exchange_type':'fanout',   # fanout 是广播，所有到该exchane的消息都会快速广播给下边的所有队列
         'queues':[
             {
                 'queue':'exchange_fanout_q1',
@@ -87,7 +88,9 @@ exchange_config = [
     },{
         'exchange':'exchange_header',
         'durable':True,
-        'exchange_type':'headers',
+        'exchange_type':'headers',      #header exchange(头交换机)和主题交换机有点相似，但是不同于主题交换机的路由是基
+                                            # 于路由键，头交换机的路由值基于消息的header数据。
+                                            #主题交换机路由键只有是字符串,而头交换机可以是整型和哈希值
         'queues':[
             {
                 'queue':'exchange_headers_q1',
